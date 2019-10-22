@@ -21,6 +21,7 @@ import (
 )
 
 var configFlag = flag.String("kubeconfig", "", "Configuration file")
+var defaultEnvironment = os.Getenv("ENVIRONMENT")
 
 func main() {
 	flag.Parse()
@@ -30,7 +31,7 @@ func main() {
 	}
 
 	err := sentry.Init(sentry.ClientOptions{
-		Environment: os.Getenv("ENVIRONMENT"),
+		Environment: defaultEnvironment,
 	})
 	if err != nil {
 		log.Fatalf("Error initialising sentry: %v", err)
@@ -111,12 +112,15 @@ func handleEventAdd(obj interface{}) {
 	}
 
 	sentryEvent := sentry.NewEvent()
-	// sentryEvent.Environment = evt.Namespace
+	if defaultEnvironment == "" {
+		sentryEvent.Environment = evt.InvolvedObject.Namespace
+	}
+
 	sentryEvent.Message = fmt.Sprintf("%s/%s: %s", evt.InvolvedObject.Kind, evt.InvolvedObject.Name, evt.Message)
 	sentryEvent.Level = getSentryLevel(evt)
 	sentryEvent.Timestamp = evt.ObjectMeta.CreationTimestamp.Unix()
 	sentryEvent.Fingerprint = getEventFingerprint(evt)
-	sentryEvent.Tags["namespace"] = evt.Namespace
+	sentryEvent.Tags["namespace"] = evt.InvolvedObject.Namespace
 	sentryEvent.Tags["component"] = evt.Source.Component
 	if evt.ClusterName != "" {
 		sentryEvent.Tags["cluster"] = evt.ClusterName
