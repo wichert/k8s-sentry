@@ -25,8 +25,8 @@ var configFlag = flag.String("kubeconfig", "", "Configuration file")
 func main() {
 	flag.Parse()
 
-	if os.Getenv("DSN") == "" {
-		log.Println("Warning: DSN environment variable not set. Can not report to Sentry")
+	if os.Getenv("SENTRY_DSN") == "" {
+		log.Println("Warning: SENTRY_DSN environment variable not set. Can not report to Sentry")
 	}
 
 	err := sentry.Init(sentry.ClientOptions{
