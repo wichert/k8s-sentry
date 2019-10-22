@@ -148,7 +148,6 @@ func getSentryLevel(evt *v1.Event) sentry.Level {
 
 func getEventFingerprint(evt *v1.Event) []string {
 	return []string{
-		evt.GetClusterName(),
 		evt.Source.Component,
 		evt.InvolvedObject.APIVersion,
 		evt.InvolvedObject.Kind,
