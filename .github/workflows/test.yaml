@@ -2,6 +2,11 @@ name: Publish release on Docker Hub
 
 on: 
   push:
+    paths:
+      - '*.go'
+      - 'go.*'
+    branches:
+      - '*'
     tags: 
       - '!*'
 
