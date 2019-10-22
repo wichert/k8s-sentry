@@ -5,6 +5,7 @@ on:
     paths:
       - '*.go'
       - 'go.*'
+      - .github/workflows/test.yaml
     branches:
       - '*'
     tags: 
