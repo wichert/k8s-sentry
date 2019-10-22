@@ -122,10 +122,6 @@ func handleEventAdd(obj interface{}) {
 	sentryEvent.Tags["reason"] = evt.Reason
 	sentryEvent.Tags["kind"] = evt.Kind
 	sentryEvent.Tags["type"] = evt.Type
-	sentryEvent.Sdk = sentry.SdkInfo{
-		Name:    "crypho.com/k8s-sentry",
-		Version: "1.0",
-	}
 
 	if evt.Action != "" {
 		sentryEvent.Extra["action"] = evt.Action
