@@ -12,7 +12,7 @@ jobs:
     steps:
     - uses: actions/checkout@v1
     - name: Build the Docker image
-      run: docker build .--tag wichert/k8s-sentry:$GITHUB_REF
+      run: docker build --tag wichert/k8s-sentry:$GITHUB_REF .
     - uses: azure/docker-login@v1
       name: Login to Docker Hub
       with:
