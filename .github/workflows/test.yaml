@@ -1,4 +1,4 @@
-name: Publish release on Docker Hub
+name: Run tests
 
 on: 
   push:
