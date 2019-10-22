@@ -10,10 +10,6 @@
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}",
-            "args": [
-                "--kubeconfig",
-                "/Users/wichert/.kube/config",
-            ]
         },
     ]
 }

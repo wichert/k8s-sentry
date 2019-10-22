@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"os/user"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -54,6 +56,13 @@ func main() {
 
 func createKubernetesClient(configFile string) (client *kubernetes.Clientset, err error) {
 	var config *rest.Config
+	if configFile == "" && !inCluster() {
+		// If we are not running in a cluster default to reading ~/.kube/config
+		if usr, err := user.Current(); err == nil {
+			configFile = filepath.Join(usr.HomeDir, ".kube", "config")
+		}
+	}
+
 	if configFile == "" {
 		config, err = rest.InClusterConfig()
 	} else {
@@ -102,7 +111,7 @@ func handleEventAdd(obj interface{}) {
 	}
 
 	sentryEvent := sentry.NewEvent()
-	sentryEvent.Environment = evt.Namespace
+	// sentryEvent.Environment = evt.Namespace
 	sentryEvent.Message = fmt.Sprintf("%s/%s: %s", evt.InvolvedObject.Kind, evt.InvolvedObject.Name, evt.Message)
 	sentryEvent.Level = getSentryLevel(evt)
 	sentryEvent.Timestamp = evt.EventTime.Unix()
@@ -152,4 +161,8 @@ func getEventFingerprint(evt *v1.Event) []string {
 		evt.Reason,
 		evt.Message,
 	}
+}
+
+func inCluster() bool {
+	return os.Getenv("KUBERNETES_SERVICE_HOST") != "" && os.Getenv("KUBERNETES_SERVICE_PORT") != ""
 }
