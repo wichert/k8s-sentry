@@ -114,13 +114,15 @@ func handleEventAdd(obj interface{}) {
 	// sentryEvent.Environment = evt.Namespace
 	sentryEvent.Message = fmt.Sprintf("%s/%s: %s", evt.InvolvedObject.Kind, evt.InvolvedObject.Name, evt.Message)
 	sentryEvent.Level = getSentryLevel(evt)
-	sentryEvent.Timestamp = evt.EventTime.Unix()
+	sentryEvent.Timestamp = evt.ObjectMeta.CreationTimestamp.Unix()
 	sentryEvent.Fingerprint = getEventFingerprint(evt)
 	sentryEvent.Tags["namespace"] = evt.Namespace
 	sentryEvent.Tags["component"] = evt.Source.Component
-	sentryEvent.Tags["cluster"] = evt.ClusterName
+	if evt.ClusterName != "" {
+		sentryEvent.Tags["cluster"] = evt.ClusterName
+	}
 	sentryEvent.Tags["reason"] = evt.Reason
-	sentryEvent.Tags["kind"] = evt.Kind
+	sentryEvent.Tags["kind"] = evt.InvolvedObject.Kind
 	sentryEvent.Tags["type"] = evt.Type
 
 	if evt.Action != "" {
