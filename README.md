@@ -7,6 +7,10 @@ There are two alternatives implementations:
 * [getsentry/sentry-kubernetes](https://github.com/getsentry/sentry-kubernetes): The official Sentry kubernetes reporter. This is not actively maintained and suffers from a [major memory leak](https://github.com/getsentry/sentry-kubernetes/issues/7).
 * [stevelacy/go-sentry-kubernetes](https://github.com/stevelacy/go-sentry-kubernetes): An alternative go implementation. This works well, but includes very little information in Sentry reports.
 
+## Deployment
+
+See [deploy](deploy/) for Kubernetes manifests.
+
 ## Configuration
 
 Configuration is done completely via environment variables.
