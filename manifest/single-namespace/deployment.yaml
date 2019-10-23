@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-sentry
+spec:
+  selector:
+    matchLabels:
+      app: sentry-kubernetes
+  template:
+    metadata:
+      labels:
+        app: sentry-kubernetes
+    spec:
+      serviceAccountName: k8s-sentry
+      containers:
+        - name: sentry-kubernetes
+          image: wichert/k8s-sentry:1.0.0
+          env:
+            - name: SENTRY_DSN
+              value: "your-DSN-goes-here"
+            - name: ENVIRONMENT
+              value: staging
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+          resources:
+            requests:
+              memory: 64Mi
+              cpu: 50m
+            limits:
+              memory: 128Mi
+              cpu: 50m
