@@ -66,7 +66,7 @@ func (app application) handleEventAdd(obj interface{}) {
 		return
 	}
 
-	if evt.Type == v1.EventTypeNormal {
+	if skipEvent(evt) {
 		return
 	}
 
@@ -97,6 +97,10 @@ func (app application) handleEventAdd(obj interface{}) {
 
 	log.Printf("%s %s\n", evt.Type, sentryEvent.Message)
 	sentry.CaptureEvent(sentryEvent)
+}
+
+func skipEvent(evt *v1.Event) bool {
+	return evt.Type == v1.EventTypeNormal
 }
 
 func getSentryLevel(evt *v1.Event) sentry.Level {
