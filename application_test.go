@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"testing"
 
 	"github.com/getsentry/sentry-go"
@@ -25,4 +26,33 @@ func TestGetSentryLevel(t *testing.T) {
 		t.Error("Unknown event types not reported with info level")
 	}
 
+}
+
+func TestInCluster(t *testing.T) {
+	os.Unsetenv("KUBERNETES_SERVICE_HOST")
+	os.Unsetenv("KUBERNETES_SERVICE_PORT")
+
+	if inCluster() {
+		t.Error("inCluster returns true if Kubernetes service env is missing")
+	}
+
+	os.Setenv("KUBERNETES_SERVICE_HOST", "api")
+	if inCluster() {
+		t.Error("inCluster returns true if KUBERNETES_SERVICE_PORT is missing")
+	}
+
+	os.Unsetenv("KUBERNETES_SERVICE_HOST")
+	os.Setenv("KUBERNETES_SERVICE_PORT", "4138")
+	if inCluster() {
+		t.Error("inCluster returns true if KUBERNETES_SERVICE_HOST is missing")
+	}
+
+	os.Setenv("KUBERNETES_SERVICE_HOST", "api")
+	os.Setenv("KUBERNETES_SERVICE_PORT", "4138")
+	if !inCluster() {
+		t.Error("inCluster returns false with Kubernetes service env present")
+	}
+
+	os.Unsetenv("KUBERNETES_SERVICE_HOST")
+	os.Unsetenv("KUBERNETES_SERVICE_PORT")
 }
