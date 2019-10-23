@@ -21,6 +21,15 @@ Configuration is done completely via environment variables.
 | `NAMESPACE` | If set only monitor events within this Kubernetes namespace. If not set all namespaces are monitored (as far as permissions allowed) |
 | `ENVIRONMENT` | Environment for Sentry issues. If not set the namespace is used as environment. |
 
+## Issue grouping
+
+*k8s-sentry* tries to be smart about grouping issues. To handle that several strategies are used:
+
+* all issues use the event type, event reason and event message as part of the fingerprint
+* events related to controlled Pods (for example Pods created through a ReplicaSet (which is
+  automatically done if you use a StatefulSet or Deployment) are grouped by the ReplicateSet.
+* other events are grouped by the the involved object
+
 ## Building
 
 This project uses [Go modules](https://github.com/golang/go/wiki/Modules) and requires Go 1.13 or later. From a git checkout you can build the binary using `go build`:

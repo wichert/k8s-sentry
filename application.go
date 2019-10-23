@@ -80,7 +80,13 @@ func (app application) handleEventAdd(obj interface{}) {
 	sentryEvent.Message = fmt.Sprintf("%s/%s: %s", evt.InvolvedObject.Kind, evt.InvolvedObject.Name, evt.Message)
 	sentryEvent.Level = getSentryLevel(evt)
 	sentryEvent.Timestamp = evt.ObjectMeta.CreationTimestamp.Unix()
-	sentryEvent.Fingerprint = getEventFingerprint(evt)
+	sentryEvent.Fingerprint = []string{
+		evt.Source.Component,
+		evt.Type,
+		evt.Reason,
+		evt.Message,
+	}
+
 	sentryEvent.Tags["namespace"] = evt.InvolvedObject.Namespace
 	sentryEvent.Tags["component"] = evt.Source.Component
 	if evt.ClusterName != "" {
@@ -94,6 +100,9 @@ func (app application) handleEventAdd(obj interface{}) {
 		sentryEvent.Extra["action"] = evt.Action
 	}
 	sentryEvent.Extra["count"] = evt.Count
+
+	handler := NewEventHandler(&app, evt)
+	sentryEvent.Fingerprint = append(sentryEvent.Fingerprint, handler.Fingerprint()...)
 
 	log.Printf("%s %s\n", evt.Type, sentryEvent.Message)
 	sentry.CaptureEvent(sentryEvent)
