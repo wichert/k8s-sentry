@@ -20,8 +20,8 @@ spec:
               value: "insert-your-DSN-here"
           resources:
             requests:
-              memory: 64Mi
-              cpu: 50m
+              memory: 10Mi
+              cpu: 5m
             limits:
-              memory: 128Mi
+              memory: 64Mi
               cpu: 50m
