@@ -14,7 +14,7 @@ spec:
       serviceAccountName: k8s-sentry
       containers:
         - name: sentry-kubernetes
-          image: wichert/k8s-sentry:1.0.0
+          image: wichert/k8s-sentry:1.1.0
           env:
             - name: SENTRY_DSN
               value: "insert-your-DSN-here"
