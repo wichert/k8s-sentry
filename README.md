@@ -5,11 +5,17 @@
 There are two alternatives implementations:
 
 * [getsentry/sentry-kubernetes](https://github.com/getsentry/sentry-kubernetes): The official Sentry kubernetes reporter. This is not actively maintained and suffers from a [major memory leak](https://github.com/getsentry/sentry-kubernetes/issues/7).
-* [stevelacy/go-sentry-kubernetes](https://github.com/stevelacy/go-sentry-kubernetes): An alternative go implementation. This works well, but includes very little information in Sentry reports.
+* [stevelacy/go-sentry-kubernetes](https://github.com/stevelacy/go-sentry-kubernetes): An alternative go implementation. This watches for Pod status changes only. This causes it to several event types (missing volumes, ingress errors, etc.).
+
+*k8s-sentry* watches for several things:
+
+* All warning and error events
+* Pod containers terminating with a non-zero exit code
+* Pods failing completely
 
 ## Deployment
 
-See [deploy](deploy/) for Kubernetes manifests.
+See [deploy](deploy/) for Kubernetes manifests and installation instructions.
 
 ## Configuration
 
@@ -42,7 +48,7 @@ go: downloading k8s.io/api v0.0.0-20191016110408-35e52d86657a
 ...
 ```
 
-You can then run `k8s-sentry` directly:
+You can then run `k8s-sentry` directly (assuming you have a valid kubectl configuration):
 
 ```shell
 $ ./k8s-sentry
