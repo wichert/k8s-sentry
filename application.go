@@ -127,7 +127,6 @@ func (app application) handlePodUpdate(oldObj, newObj interface{}) {
 	// that terminated uncleanly
 
 	if sentryEvent != nil {
-		sentryEvent.Message = fmt.Sprintf("%s/%s: %s", pod.Kind, pod.Name, sentryEvent.Message)
 		sentryEvent.Level = sentry.LevelError
 		if app.defaultEnvironment != "" {
 			sentryEvent.Environment = app.defaultEnvironment
@@ -148,6 +147,7 @@ func (app application) handlePodUpdate(oldObj, newObj interface{}) {
 		}
 
 		sentryEvent.Tags["kind"] = pod.Kind
+		sentryEvent.Message = fmt.Sprintf("Pod/%s: %s", pod.Name, sentryEvent.Message)
 
 		sentry.CaptureEvent(sentryEvent)
 	}
