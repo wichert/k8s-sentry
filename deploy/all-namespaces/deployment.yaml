@@ -17,9 +17,11 @@ spec:
           image: wichert/k8s-sentry:1.0.0
           env:
             - name: SENTRY_DSN
-              value: "your-DSN-goes-here"
-            - name: ENVIRONMENT
-              value: staging
+              value: "insert-your-DSN-here"
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
           resources:
             requests:
               memory: 64Mi
