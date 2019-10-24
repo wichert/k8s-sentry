@@ -36,6 +36,13 @@ func (h DefaultEventHandler) Fingerprint() []string {
 	}
 }
 
+var emptyTags = map[string]string{}
+
+// Tags returns a set of tags that should be added to the event
+func (h DefaultEventHandler) Tags() map[string]string {
+	return emptyTags
+}
+
 // NewDefaultEventHandler creates a new DefaultEventHandler instance
 func NewDefaultEventHandler(app *application, evt *v1.Event) EventHandler {
 	return &DefaultEventHandler{Event: evt}

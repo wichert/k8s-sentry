@@ -32,6 +32,11 @@ func (h PodEventHandler) Fingerprint() []string {
 	return fingerprintFromMeta(&h.Pod.ObjectMeta)
 }
 
+// Tags returns a set of tags that should be added to the event
+func (h PodEventHandler) Tags() map[string]string {
+	return h.Pod.Labels
+}
+
 // NewPodEventHandler creates a new PodEventHandler instance
 func NewPodEventHandler(app *application, evt *v1.Event) EventHandler {
 	pod, err := app.clientset.CoreV1().Pods(evt.Namespace).Get(

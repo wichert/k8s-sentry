@@ -23,6 +23,9 @@ import (
 type EventHandler interface {
 	// Fingerprint returns the fingerprint entries that are specific for an event type
 	Fingerprint() []string
+
+	// Tags returns a set of tags that should be added to the event
+	Tags() map[string]string
 }
 
 type registryKey struct {

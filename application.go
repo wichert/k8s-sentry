@@ -146,8 +146,10 @@ func (app application) handlePodUpdate(oldObj, newObj interface{}) {
 		if pod.ClusterName != "" {
 			sentryEvent.Tags["cluster"] = pod.ClusterName
 		}
-
 		sentryEvent.Tags["kind"] = pod.Kind
+		for k, v := range pod.ObjectMeta.Labels {
+			sentryEvent.Tags[k] = v
+		}
 		sentryEvent.Message = fmt.Sprintf("Pod/%s: %s", pod.Name, sentryEvent.Message)
 
 		sentry.CaptureEvent(sentryEvent)
@@ -191,7 +193,6 @@ func (app application) handleEventAdd(obj interface{}) {
 	sentryEvent.Tags["reason"] = evt.Reason
 	sentryEvent.Tags["kind"] = evt.InvolvedObject.Kind
 	sentryEvent.Tags["type"] = evt.Type
-
 	if evt.Action != "" {
 		sentryEvent.Extra["action"] = evt.Action
 	}
@@ -199,6 +200,9 @@ func (app application) handleEventAdd(obj interface{}) {
 
 	handler := NewEventHandler(&app, evt)
 	sentryEvent.Fingerprint = append(sentryEvent.Fingerprint, handler.Fingerprint()...)
+	for k, v := range handler.Tags() {
+		sentryEvent.Tags[k] = v
+	}
 
 	log.Printf("%s %s\n", evt.Type, sentryEvent.Message)
 	sentry.CaptureEvent(sentryEvent)
