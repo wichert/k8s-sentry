@@ -1,4 +1,4 @@
-# crypho.com/k8s-sentry
+# k8s-sentry
 
 *k8s-sentry* is a simple tool to monitor a [Kubernetes](https://kubernetes.io) cluster and report all operational issues to [Sentry](http://sentry.io).
 

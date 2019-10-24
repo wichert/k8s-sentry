@@ -1,4 +1,4 @@
-module crypho.com/k8s-sentry
+module wiggy.net/k8s-sentry
 
 go 1.13
 
