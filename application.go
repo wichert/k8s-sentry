@@ -127,6 +127,7 @@ func (app application) handlePodUpdate(oldObj, newObj interface{}) {
 	// that terminated uncleanly
 
 	if sentryEvent != nil {
+		sentryEvent.Platform = "other"
 		sentryEvent.Level = sentry.LevelError
 		if app.defaultEnvironment != "" {
 			sentryEvent.Environment = app.defaultEnvironment
@@ -165,6 +166,7 @@ func (app application) handleEventAdd(obj interface{}) {
 	}
 
 	sentryEvent := sentry.NewEvent()
+	sentryEvent.Platform = "other"
 	if app.defaultEnvironment != "" {
 		sentryEvent.Environment = app.defaultEnvironment
 	} else {
