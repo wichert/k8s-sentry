@@ -23,26 +23,40 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	lru "github.com/hashicorp/golang-lru"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 )
+
+type terminationKey struct {
+	podUID        types.UID
+	containerName string
+}
 
 type application struct {
 	clientset          *kubernetes.Clientset
 	defaultEnvironment string
 	namespace          string
+	terminationsSeen   *lru.Cache
 }
 
-func (app application) Run() chan struct{} {
+func (app *application) Run() (chan struct{}, error) {
+	terminationsSeen, err := lru.New(500)
+	if err != nil {
+		return nil, err
+	}
+	app.terminationsSeen = terminationsSeen
 	if app.namespace == "" {
 		app.namespace = v1.NamespaceAll
 	}
 	stop := make(chan struct{})
 	go app.monitorEvents(stop)
 	go app.monitorPods(stop)
-	return stop
+	return stop, nil
 }
 
 func (app application) monitorPods(stop chan struct{}) {
@@ -84,7 +98,7 @@ func (app application) monitorEvents(stop chan struct{}) {
 	controller.Run(stop)
 }
 
-func (app application) handlePodUpdate(oldObj, newObj interface{}) {
+func (app *application) handlePodUpdate(oldObj, newObj interface{}) {
 	pod, ok := newObj.(*v1.Pod)
 	if !ok {
 		sentry.CaptureMessage("Unexpected pod type")
@@ -107,7 +121,10 @@ func (app application) handlePodUpdate(oldObj, newObj interface{}) {
 		// ignore that situation (for now).
 		allContainers := append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...)
 		for _, status := range allContainers {
-			if status.LastTerminationState.Terminated != nil && status.LastTerminationState.Terminated.ExitCode != 0 {
+			if status.LastTerminationState.Terminated != nil && status.LastTerminationState.Terminated.ExitCode != 0 && app.isNewTermination(pod, &status) {
+				// Note that we only care about terminations in the last half seconds. This prevents
+				// us from treating updates for other reasons after a container terminated as another
+				// occurance of the termination.
 				sentryEvent = sentry.NewEvent()
 				sentryEvent.Message = status.LastTerminationState.Terminated.Message
 				if sentryEvent.Message == "" {
@@ -154,6 +171,33 @@ func (app application) handlePodUpdate(oldObj, newObj interface{}) {
 
 		sentry.CaptureEvent(sentryEvent)
 	}
+}
+
+func (app *application) isNewTermination(pod *v1.Pod, status *v1.ContainerStatus) bool {
+	finishedAt := status.LastTerminationState.Terminated.FinishedAt
+	age := metav1.Now().Sub(finishedAt.Time)
+
+	key := terminationKey{
+		podUID:        pod.UID,
+		containerName: status.Name,
+	}
+	cachedTime, seen := app.terminationsSeen.Get(key)
+	app.terminationsSeen.Add(key, finishedAt)
+
+	// We skip old records. These happen if a container terminated before, and then the
+	// pod later gets updated for other reasons with the termination record still in place.
+	if age.Microseconds() > 5000 {
+		return false
+	}
+
+	prevTime, ok := cachedTime.(metav1.Time)
+	if !ok {
+		// If this happened we have bad data in the cache and we are best off to
+		// not do anything anymore
+		return false
+	}
+
+	return !seen || finishedAt.After(prevTime.Time)
 }
 
 func (app application) handleEventAdd(obj interface{}) {

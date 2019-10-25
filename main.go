@@ -60,7 +60,11 @@ func main() {
 		namespace:          os.Getenv("NAMESPACE"),
 	}
 
-	stopSignal := app.Run()
+	stopSignal, err := app.Run()
+	if err != nil {
+		sentry.CaptureException(err)
+		log.Fatalf("Error starting monitors: %v", err)
+	}
 	abortSignal := make(chan os.Signal)
 	signal.Notify(abortSignal, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
 	<-abortSignal
