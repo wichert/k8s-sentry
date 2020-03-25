@@ -15,10 +15,11 @@ jobs:
         with:
           go-version: 1.13
         id: go
-      - uses: actions/checkout@v1
+
+      - uses: actions/checkout@v2
+
       - name: Run tests
         run: go test .
-
 
   build:
     needs: [test]
@@ -28,7 +29,9 @@ jobs:
       IMAGE: wichert/k8s-sentry
 
     steps:
-      - uses: actions/checkout@v1
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
       - name: Build Docker image
         run: |
           docker build --tag $IMAGE .
@@ -43,3 +46,23 @@ jobs:
           docker push $IMAGE
           docker tag $IMAGE $IMAGE:$version
           docker push $IMAGE:$version
+
+      - name: Generate changelog
+        uses: scottbrenner/generate-changelog-action@master
+        id: Changelog
+        env:
+          REPO: ${{ github.repository }}
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: actions/create-release@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: |
+            ${{ steps.Changelog.outputs.changelog }}
+          draft: false
+          prerelease: false
+
