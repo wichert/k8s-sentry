@@ -40,7 +40,7 @@ var emptyTags = map[string]string{}
 
 // Tags returns a set of tags that should be added to the event
 func (h DefaultEventHandler) Tags() map[string]string {
-	return emptyTags
+	return h.Event.GetLabels()
 }
 
 // NewDefaultEventHandler creates a new DefaultEventHandler instance
