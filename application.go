@@ -112,6 +112,7 @@ func (app *application) handlePodUpdate(oldObj, newObj interface{}) {
 		// terminated in a failure (exited with a non-zero exit code or was stopped by the system).
 		sentryEvent = sentry.NewEvent()
 		sentryEvent.Message = pod.Status.Message
+		sentryEvent.ServerName = pod.Spec.NodeName
 		sentryEvent.Tags["reason"] = pod.Status.Reason
 	} else {
 		// The Pod is still running. Check if one of its containers terminated with a non-zero exit code.
@@ -127,6 +128,7 @@ func (app *application) handlePodUpdate(oldObj, newObj interface{}) {
 				// occurance of the termination.
 				sentryEvent = sentry.NewEvent()
 				sentryEvent.Message = status.LastTerminationState.Terminated.Message
+				sentryEvent.ServerName = pod.Spec.NodeName
 				if sentryEvent.Message == "" {
 					// OOMKilled does not leave a message :(
 					sentryEvent.Message = status.LastTerminationState.Terminated.Reason

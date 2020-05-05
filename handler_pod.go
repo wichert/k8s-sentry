@@ -34,7 +34,12 @@ func (h PodEventHandler) Fingerprint() []string {
 
 // Tags returns a set of tags that should be added to the event
 func (h PodEventHandler) Tags() map[string]string {
-	return h.Pod.Labels
+	tags := make(map[string]string)
+	for k, v := range h.Pod.Labels {
+		tags[k] = v
+	}
+	tags["nodeName"] = h.Pod.Spec.NodeName
+	return tags
 }
 
 // NewPodEventHandler creates a new PodEventHandler instance
