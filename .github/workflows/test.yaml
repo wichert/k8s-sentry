@@ -1,15 +1,6 @@
 name: Run tests
 
-on: 
-  push:
-    paths:
-      - '*.go'
-      - 'go.*'
-      - .github/workflows/test.yaml
-    branches:
-      - '*'
-    tags: 
-      - '!*'
+on: push
 
 jobs:
   test:
