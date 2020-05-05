@@ -34,7 +34,7 @@ type registryKey struct {
 }
 
 var handlerRegistry = map[registryKey]func(*application, *v1.Event) EventHandler{
-	registryKey{APIVersion: "v1", Kind: "Pod"}: NewPodEventHandler,
+	{APIVersion: "v1", Kind: "Pod"}: NewPodEventHandler,
 }
 
 // NewEventHandler is a factory function to create the right EventHandler for an event
