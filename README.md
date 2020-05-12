@@ -2,6 +2,8 @@
 
 *k8s-sentry* is a simple tool to monitor a [Kubernetes](https://kubernetes.io) cluster and report all operational issues to [Sentry](http://sentry.io).
 
+![Screenshot](docs/screenshot.png)
+
 There are two alternatives implementations:
 
 * [getsentry/sentry-kubernetes](https://github.com/getsentry/sentry-kubernetes): The official Sentry kubernetes reporter. This is not actively maintained and suffers from a [major memory leak](https://github.com/getsentry/sentry-kubernetes/issues/7).
