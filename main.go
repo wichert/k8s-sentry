@@ -65,7 +65,7 @@ func main() {
 		sentry.CaptureException(err)
 		log.Fatalf("Error starting monitors: %v", err)
 	}
-	abortSignal := make(chan os.Signal)
+	abortSignal := make(chan os.Signal, 2)
 	signal.Notify(abortSignal, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
 	<-abortSignal
 

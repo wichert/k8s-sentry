@@ -8,7 +8,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 )
 
-func testSkipEvent(t *testing.T) {
+func TestSkipEvent(t *testing.T) {
 	t.Parallel()
 
 	evt := &v1.Event{Type: v1.EventTypeNormal}

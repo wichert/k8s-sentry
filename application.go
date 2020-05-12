@@ -270,20 +270,6 @@ func getSentryLevel(evt *v1.Event) sentry.Level {
 	}
 }
 
-func getEventFingerprint(evt *v1.Event) []string {
-	return []string{
-		evt.Source.Component,
-		evt.InvolvedObject.APIVersion,
-		evt.InvolvedObject.Kind,
-		evt.InvolvedObject.Namespace,
-		evt.InvolvedObject.Name,
-		evt.InvolvedObject.FieldPath,
-		evt.Type,
-		evt.Reason,
-		evt.Message,
-	}
-}
-
 func inCluster() bool {
 	return os.Getenv("KUBERNETES_SERVICE_HOST") != "" && os.Getenv("KUBERNETES_SERVICE_PORT") != ""
 }
