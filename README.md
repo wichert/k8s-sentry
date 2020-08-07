@@ -1,19 +1,19 @@
 # k8s-sentry
 
-*k8s-sentry* is a simple tool to monitor a [Kubernetes](https://kubernetes.io) cluster and report all operational issues to [Sentry](http://sentry.io).
+_k8s-sentry_ is a simple tool to monitor a [Kubernetes](https://kubernetes.io) cluster and report all operational issues to [Sentry](http://sentry.io).
 
 ![Screenshot](docs/screenshot.png)
 
 There are two alternatives implementations:
 
-* [getsentry/sentry-kubernetes](https://github.com/getsentry/sentry-kubernetes): The official Sentry kubernetes reporter. This is not actively maintained and suffers from a [major memory leak](https://github.com/getsentry/sentry-kubernetes/issues/7).
-* [stevelacy/go-sentry-kubernetes](https://github.com/stevelacy/go-sentry-kubernetes): An alternative go implementation. This watches for Pod status changes only. This causes it to several event types (missing volumes, ingress errors, etc.).
+- [getsentry/sentry-kubernetes](https://github.com/getsentry/sentry-kubernetes): The official Sentry kubernetes reporter. This is not actively maintained and suffers from a [major memory leak](https://github.com/getsentry/sentry-kubernetes/issues/7).
+- [stevelacy/go-sentry-kubernetes](https://github.com/stevelacy/go-sentry-kubernetes): An alternative go implementation. This watches for Pod status changes only. This causes it to several event types (missing volumes, ingress errors, etc.).
 
-*k8s-sentry* watches for several things:
+_k8s-sentry_ watches for several things:
 
-* All warning and error events
-* Pod containers terminating with a non-zero exit code
-* Pods failing completely
+- All warning and error events
+- Pod containers terminating with a non-zero exit code
+- Pods failing completely
 
 ## Deployment
 
@@ -27,16 +27,16 @@ Configuration is done completely via environment variables.
 | -- | -- |
 | `SENTRY_DSN` | **Required** DSN for a Sentry project. |
 | `NAMESPACE` | Comma separated set of namespaces to minitor. If not set all namespaces are monitored (as far as permissions allow) |
-| `ENVIRONMENT` | Environment for Sentry issues. If not set the namespace is used as environment. |
+| `SENTRY_ENVIRONMENT` | Environment for Sentry issues. If not set the namespace is used as environment. |
 
 ## Issue grouping
 
-*k8s-sentry* tries to be smart about grouping issues. To handle that several strategies are used:
+_k8s-sentry_ tries to be smart about grouping issues. To handle that several strategies are used:
 
-* all issues use the event type, event reason and event message as part of the fingerprint
-* events related to controlled Pods (for example Pods created through a ReplicaSet (which is
+- all issues use the event type, event reason and event message as part of the fingerprint
+- events related to controlled Pods (for example Pods created through a ReplicaSet (which is
   automatically done if you use a StatefulSet or Deployment) are grouped by the ReplicateSet.
-* other events are grouped by the the involved object
+- other events are grouped by the the involved object
 
 ## Building
 
