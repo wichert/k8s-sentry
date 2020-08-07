@@ -32,7 +32,7 @@ import (
 )
 
 var configFlag = flag.String("kubeconfig", "", "Configuration file")
-var defaultEnvironment = os.Getenv("ENVIRONMENT")
+var defaultEnvironment = os.Getenv("SENTRY_ENVIRONMENT")
 
 func main() {
 	flag.Parse()
@@ -56,7 +56,7 @@ func main() {
 
 	app := application{
 		clientset:          clientset,
-		defaultEnvironment: os.Getenv("ENVIRONMENT"),
+		defaultEnvironment: os.Getenv("SENTRY_ENVIRONMENT"),
 		namespace:          os.Getenv("NAMESPACE"),
 	}
 
