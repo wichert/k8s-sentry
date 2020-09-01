@@ -20,6 +20,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -45,17 +46,22 @@ type application struct {
 }
 
 func (app *application) Run() (chan struct{}, error) {
-	terminationsSeen, err := lru.New(500)
-	if err != nil {
-		return nil, err
-	}
-	app.terminationsSeen = terminationsSeen
-	if app.namespace == "" {
-		app.namespace = v1.NamespaceAll
-	}
+	ns := strings.Split(app.namespace, ",")
 	stop := make(chan struct{})
-	go app.monitorEvents(stop)
-	go app.monitorPods(stop)
+		for _, namespace := range ns {
+		terminationsSeen, err := lru.New(500)
+		if err != nil {
+			return nil, err
+		}
+		app.terminationsSeen = terminationsSeen
+		if namespace == "" {
+		        app.namespace = v1.NamespaceAll
+	        } else {
+			app.namespace = namespace
+		}
+		go app.monitorEvents(stop)
+		go app.monitorPods(stop)
+	}
 	return stop, nil
 }
 

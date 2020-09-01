@@ -10,6 +10,9 @@ There are two sets of manifests:
 * [single-namespace](single-namespace/) only monitors the namespace in which
   k8s-sentry is deployed.
 
+multiple-namespaces can be monitored by providing the namespaces as comma separated 
+environment variable NAMESPACE in [single-namespace](single-namespace/) manifests.
+
 Once you have decided which set of manifests you need to use you need to do
 edit its `deployment.yaml` file and insert the DSN for your Sentry project.
 After you have done that you can deploy them using `kubectl apply`:
