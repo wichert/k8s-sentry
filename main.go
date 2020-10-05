@@ -39,6 +39,12 @@ var defaultEnvironment = os.Getenv("SENTRY_ENVIRONMENT")
 func main() {
 	flag.Parse()
 
+	if defaultEnvironment == "" {
+		defaultEnvironment = os.Getenv("ENVIRONMENT")
+		if defaultEnvironment != "" {
+			log.Println("Warning: ENVIRONMENT environment variable has been deprecated. Please use SENTRY_ENVIRONMENT instead.")
+		}
+	}
 	if os.Getenv("SENTRY_DSN") == "" {
 		log.Println("Warning: SENTRY_DSN environment variable not set. Can not report to Sentry")
 	}
