@@ -22,10 +22,12 @@ import (
 	"os/signal"
 	"os/user"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/getsentry/sentry-go"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -57,7 +59,13 @@ func main() {
 	app := application{
 		clientset:          clientset,
 		defaultEnvironment: os.Getenv("ENVIRONMENT"),
-		namespace:          os.Getenv("NAMESPACE"),
+	}
+
+	namespace := os.Getenv("NAMESPACE")
+	if namespace == "" {
+		app.namespaces = []string{v1.NamespaceAll}
+	} else {
+		app.namespaces = strings.Split(namespace, ",")
 	}
 
 	stopSignal, err := app.Run()

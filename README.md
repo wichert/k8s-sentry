@@ -26,7 +26,7 @@ Configuration is done completely via environment variables.
 | Variable | Description |
 | -- | -- |
 | `SENTRY_DSN` | **Required** DSN for a Sentry project. |
-| `NAMESPACE` | If set only monitor events within this Kubernetes namespace. If not set all namespaces are monitored (as far as permissions allowed) |
+| `NAMESPACE` | Comma separated set of namespaces to minitor. If not set all namespaces are monitored (as far as permissions allow) |
 | `ENVIRONMENT` | Environment for Sentry issues. If not set the namespace is used as environment. |
 
 ## Issue grouping

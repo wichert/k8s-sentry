@@ -40,8 +40,8 @@ type terminationKey struct {
 type application struct {
 	clientset          *kubernetes.Clientset
 	defaultEnvironment string
-	namespace          string
 	terminationsSeen   *lru.Cache
+	namespaces         []string
 }
 
 func (app *application) Run() (chan struct{}, error) {
@@ -50,20 +50,20 @@ func (app *application) Run() (chan struct{}, error) {
 		return nil, err
 	}
 	app.terminationsSeen = terminationsSeen
-	if app.namespace == "" {
-		app.namespace = v1.NamespaceAll
-	}
+
 	stop := make(chan struct{})
-	go app.monitorEvents(stop)
-	go app.monitorPods(stop)
+	for _, namespace := range app.namespaces {
+		go app.monitorEvents(namespace, stop)
+		go app.monitorPods(namespace, stop)
+	}
 	return stop, nil
 }
 
-func (app application) monitorPods(stop chan struct{}) {
+func (app application) monitorPods(namespace string, stop chan struct{}) {
 	watchList := cache.NewListWatchFromClient(
 		app.clientset.CoreV1().RESTClient(),
 		"pods",
-		app.namespace,
+		namespace,
 		fields.Everything(),
 	)
 
@@ -79,11 +79,11 @@ func (app application) monitorPods(stop chan struct{}) {
 	controller.Run(stop)
 }
 
-func (app application) monitorEvents(stop chan struct{}) {
+func (app application) monitorEvents(namespace string, stop chan struct{}) {
 	watchList := cache.NewListWatchFromClient(
 		app.clientset.CoreV1().RESTClient(),
 		"events",
-		app.namespace,
+		namespace,
 		fields.Everything(),
 	)
 	_, controller := cache.NewInformer(
