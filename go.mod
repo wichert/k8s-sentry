@@ -3,7 +3,7 @@ module wiggy.net/k8s-sentry
 go 1.13
 
 require (
-	github.com/getsentry/sentry-go v0.6.1
+	github.com/getsentry/sentry-go v0.7.0
 	github.com/hashicorp/golang-lru v0.5.1
 	github.com/imdario/mergo v0.3.8 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
