@@ -24,7 +24,7 @@ Or you can use Helm to deploy:
 ```sh
 helm repo add k8s-sentry https://wichert.github.io/k8s-sentry
 helm repo update
-helm install k8s-sentry/helm-k8s-sentry --set sentryDSN=<your Sentry DSN value>
+helm install k8s-sentry/helm-k8s-sentry --set sentry.dsn=<your Sentry DSN value>
 ```
 
 For other configuration options see: [values.yaml](helm-k8s-sentry/values.yaml)

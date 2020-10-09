@@ -17,7 +17,7 @@ spec:
           image: {{.Values.image}}
           env:
             - name: SENTRY_DSN
-              value: {{.Values.sentryDSN}}
+              value: {{.Values.sentry.dsn}}
 {{- if .Values.namespaces }}
             - name: NAMESPACE
               value: {{.Values.namespaces}}
@@ -27,9 +27,9 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
 {{- end }}
-{{- if .Values.sentryEnvironment }}
+{{- if .Values.sentry.environment }}
             - name: SENTRY_ENVIRONMENT
-              value: {{.Values.sentryEnvironment}}
+              value: {{.Values.sentry.environment}}
 {{- end }}
           resources:
             requests:
