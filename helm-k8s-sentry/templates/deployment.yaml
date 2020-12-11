@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{.Values.name}}
+spec:
+  selector:
+    matchLabels:
+      app: {{.Values.deploymentName}}
+  template:
+    metadata:
+      labels:
+        app: {{.Values.deploymentName}}
+    spec:
+      serviceAccountName: {{.Values.name}}
+      containers:
+        - name: {{.Values.deploymentName}}
+          image: {{.Values.image}}
+          env:
+            - name: SENTRY_DSN
+              value: {{.Values.sentry.dsn}}
+{{- if .Values.namespaces }}
+            - name: NAMESPACE
+              value: {{.Values.namespaces}}
+{{- else if .Values.singleNamespace }}
+            - name: NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+{{- end }}
+{{- if .Values.sentry.environment }}
+            - name: SENTRY_ENVIRONMENT
+              value: {{.Values.sentry.environment}}
+{{- end }}
+          resources:
+            requests:
+              memory: 10Mi
+              cpu: 5m
+            limits:
+              memory: 64Mi
+              cpu: 50m

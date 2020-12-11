@@ -1,0 +1,9 @@
+name: k8s-sentry
+deploymentName: k8s-sentry
+image: wichert/k8s-sentry:1.5.0
+
+# singleNamespace: true # do not set to true if `namespaces` is set
+# namespaces: "default,kube-system"
+sentry:
+  dsn: "this must be set when deploying the Helm chart"
+  # environment: "test"

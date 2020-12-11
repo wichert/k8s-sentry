@@ -1,0 +1,7 @@
+apiVersion: v1
+name: helm-k8s-sentry
+description: A Helm chart to enable Sentry reporting of Kubernetes errors
+version: 0.1.0
+home: https://wichert.github.io/k8s-sentry
+sources:
+  - https://github.com/wichert/k8s-sentry

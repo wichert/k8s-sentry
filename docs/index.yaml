@@ -1,0 +1,15 @@
+apiVersion: v1
+entries:
+  helm-k8s-sentry:
+  - apiVersion: v1
+    created: "2020-10-15T15:57:12.9780604Z"
+    description: A Helm chart to enable Sentry reporting of Kubernetes errors
+    digest: 0203b6e006db60faaa6e75b957625490fc519e4982a6387d77dbf347dfa844ae
+    home: https://wichert.github.io/k8s-sentry
+    name: helm-k8s-sentry
+    sources:
+    - https://github.com/wichert/k8s-sentry
+    urls:
+    - https://daaain.github.io/k8s-sentry/helm-k8s-sentry-0.1.0.tgz
+    version: 0.1.0
+generated: "2020-10-15T15:57:12.9741673Z"
