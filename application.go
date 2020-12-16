@@ -107,71 +107,70 @@ func (app *application) handlePodUpdate(oldObj, newObj interface{}) {
 
 	var sentryEvent *sentry.Event
 
-	if pod.Status.Phase == v1.PodFailed {
-		// All containers in the pod have terminated, and at least one container has
-		// terminated in a failure (exited with a non-zero exit code or was stopped by the system).
-		sentryEvent = sentry.NewEvent()
-		sentryEvent.Message = pod.Status.Message
-		sentryEvent.ServerName = pod.Spec.NodeName
-		sentryEvent.Tags["reason"] = pod.Status.Reason
-	} else {
-		// The Pod is still running. Check if one of its containers terminated with a non-zero exit code.
-		// If so report that as an error.
-		// Note that this will fail if multiple containers in the pod are terminating at the same time.
-		// Since that should be rare, and hopefully someone will investigate on any error anyway we
-		// ignore that situation (for now).
-		allContainers := append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...)
-		for _, status := range allContainers {
-			if status.LastTerminationState.Terminated != nil && status.LastTerminationState.Terminated.ExitCode != 0 && app.isNewTermination(pod, &status) {
-				// Note that we only care about terminations in the last half seconds. This prevents
-				// us from treating updates for other reasons after a container terminated as another
-				// occurance of the termination.
-				sentryEvent = sentry.NewEvent()
-				sentryEvent.Message = status.LastTerminationState.Terminated.Message
-				sentryEvent.ServerName = pod.Spec.NodeName
-				if sentryEvent.Message == "" {
+	// The Pod is still running. Check if one of its containers terminated with a non-zero exit code.
+	// If so report that as an error.
+	// Note that this will fail if multiple containers in the pod are terminating at the same time.
+	// Since that should be rare, and hopefully someone will investigate on any error anyway we
+	// ignore that situation (for now).
+	allContainers := append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...)
+	for _, status := range allContainers {
+		if status.LastTerminationState.Terminated != nil && status.LastTerminationState.Terminated.ExitCode != 0 && app.isNewTermination(pod, &status) {
+			// Note that we only care about terminations in the last half seconds. This prevents
+			// us from treating updates for other reasons after a container terminated as another
+			// occurance of the termination.
+			sentryEvent = sentry.NewEvent()
+			sentryEvent.Message = status.LastTerminationState.Terminated.Message
+			sentryEvent.ServerName = pod.Spec.NodeName
+			if sentryEvent.Message == "" {
+				if status.LastTerminationState.Terminated.Reason == "Error" {
+					sentryEvent.Message = fmt.Sprintf("Error %s exited with code %d", status.Name, status.LastTerminationState.Terminated.ExitCode)
+				} else {
 					// OOMKilled does not leave a message :(
 					sentryEvent.Message = status.LastTerminationState.Terminated.Reason
 				}
-				sentryEvent.Release = status.Image
-				sentryEvent.Tags["reason"] = status.LastTerminationState.Terminated.Reason
-				sentryEvent.Extra["exit-code"] = strconv.FormatInt(int64(status.LastTerminationState.Terminated.ExitCode), 10)
-				sentryEvent.Extra["restartCount"] = status.RestartCount
-				break
 			}
+
+			sentryEvent.Release = status.Image
+			sentryEvent.Tags["reason"] = status.LastTerminationState.Terminated.Reason
+			sentryEvent.Extra["exit-code"] = strconv.FormatInt(int64(status.LastTerminationState.Terminated.ExitCode), 10)
+			sentryEvent.Extra["restartCount"] = status.RestartCount
+			sentryEvent.Extra["container"] = status.Name
+			sentryEvent.Extra["pod"] = pod.Name
+
+			sentryEvent.Extra["pod-phase"] = pod.Status.Phase
+			if pod.Status.Message != "" {
+				sentryEvent.Extra["pod-status-message"] = pod.Status.Message
+			}
+			if pod.Status.Reason != "" {
+				sentryEvent.Extra["pod-status-reason"] = pod.Status.Reason
+			}
+
+			sentryEvent.Logger = "kubernetes"
+			sentryEvent.Level = sentry.LevelError
+			if app.defaultEnvironment != "" {
+				sentryEvent.Environment = app.defaultEnvironment
+			} else {
+				sentryEvent.Environment = pod.Namespace
+			}
+
+			sentryEvent.Fingerprint = append(
+				[]string{
+					sentryEvent.Tags["reason"],
+				},
+				fingerprintFromMeta(&pod.ObjectMeta)...)
+
+			sentryEvent.Tags["namespace"] = pod.Namespace
+			if pod.ClusterName != "" {
+				sentryEvent.Tags["cluster"] = pod.ClusterName
+			}
+			sentryEvent.Tags["kind"] = pod.Kind
+			for k, v := range pod.ObjectMeta.Labels {
+				sentryEvent.Tags[k] = v
+			}
+			sentryEvent.Message = fmt.Sprintf("Pod/%s: %s", pod.Name, sentryEvent.Message)
+
+			sentry.CaptureEvent(sentryEvent)
 		}
-	}
-
-	// There are many reasons a Pod can be updated. We are only interested in containers
-	// that terminated uncleanly
-
-	if sentryEvent != nil {
-		sentryEvent.Logger = "kubernetes"
-		sentryEvent.Level = sentry.LevelError
-		if app.defaultEnvironment != "" {
-			sentryEvent.Environment = app.defaultEnvironment
-		} else {
-			sentryEvent.Environment = pod.Namespace
-		}
-
-		sentryEvent.Fingerprint = append(
-			[]string{
-				sentryEvent.Tags["reason"],
-				sentryEvent.Message,
-			},
-			fingerprintFromMeta(&pod.ObjectMeta)...)
-
-		sentryEvent.Tags["namespace"] = pod.Namespace
-		if pod.ClusterName != "" {
-			sentryEvent.Tags["cluster"] = pod.ClusterName
-		}
-		sentryEvent.Tags["kind"] = pod.Kind
-		for k, v := range pod.ObjectMeta.Labels {
-			sentryEvent.Tags[k] = v
-		}
-		sentryEvent.Message = fmt.Sprintf("Pod/%s: %s", pod.Name, sentryEvent.Message)
-
-		sentry.CaptureEvent(sentryEvent)
 	}
 }
 
