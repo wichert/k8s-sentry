@@ -244,6 +244,9 @@ func (app application) handleEventAdd(obj interface{}) {
 	sentryEvent.Tags["reason"] = evt.Reason
 	sentryEvent.Tags["kind"] = evt.InvolvedObject.Kind
 	sentryEvent.Tags["type"] = evt.Type
+	if evt.ReportingController != "" {
+		sentryEvent.Tags["controller"] = evt.ReportingController
+	}
 	if evt.Action != "" {
 		sentryEvent.Extra["action"] = evt.Action
 	}
