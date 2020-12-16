@@ -58,9 +58,14 @@ func fingerprintFromMeta(resource *metav1.ObjectMeta) []string {
 		}
 	}
 
+	name := resource.GenerateName
+	if name == "" {
+		name = resource.Name
+	}
+
 	// Otherwise we group based onthe object itself
 	return []string{
 		resource.Namespace,
-		string(resource.UID),
+		name,
 	}
 }
