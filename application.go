@@ -220,8 +220,13 @@ func (app application) handleEventAdd(obj interface{}) {
 		sentryEvent.Environment = evt.InvolvedObject.Namespace
 	}
 
+	msg := evt.Message
+	if msg == "" {
+		msg = evt.Reason
+	}
+
 	sentryEvent.Logger = "kubernetes"
-	sentryEvent.Message = fmt.Sprintf("%s/%s: %s", evt.InvolvedObject.Kind, evt.InvolvedObject.Name, evt.Message)
+	sentryEvent.Message = fmt.Sprintf("%s/%s: %s", evt.InvolvedObject.Kind, evt.InvolvedObject.Name, msg)
 	sentryEvent.Level = getSentryLevel(evt)
 	sentryEvent.Timestamp = evt.ObjectMeta.CreationTimestamp.Time
 	sentryEvent.Fingerprint = []string{
