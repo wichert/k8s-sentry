@@ -232,7 +232,6 @@ func (app application) handleEventAdd(obj interface{}) {
 		evt.Source.Component,
 		evt.Type,
 		evt.Reason,
-		evt.Message,
 	}
 
 	sentryEvent.Tags["namespace"] = evt.InvolvedObject.Namespace
