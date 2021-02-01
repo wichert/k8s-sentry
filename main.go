@@ -71,12 +71,12 @@ func main() {
 	exNamespace := strings.Split(os.Getenv("EXCLUDE_NAMESPACE"), ",")
 	allNamespace := []string{v1.NamespaceAll}
 
-	switch inNamespace {
+	switch len(inNamespace) {
 	// include all namespaces
-	case nil:
-		switch exNamespace {
+	case 0:
+		switch len(exNamespace) {
 		// exclude nothing
-		case nil:
+		case 0:
 			app.namespaces = allNamespace
 		// exclude some
 		default:
@@ -84,9 +84,9 @@ func main() {
 		}
 	// include only some namespaces
 	default:
-		switch exNamespace {
+		switch len(exNamespace) {
 		// include some, exclude nothing
-		case nil:
+		case 0:
 			app.namespaces = inNamespace
 		// include some, exclude some from it
 		default:
