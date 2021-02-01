@@ -67,11 +67,31 @@ func main() {
 		defaultEnvironment: os.Getenv("SENTRY_ENVIRONMENT"),
 	}
 
-	namespace := os.Getenv("NAMESPACE")
-	if namespace == "" {
-		app.namespaces = []string{v1.NamespaceAll}
-	} else {
-		app.namespaces = strings.Split(namespace, ",")
+	inNamespace := strings.Split(os.Getenv("NAMESPACE"), ",")
+	exNamespace := strings.Split(os.Getenv("EXCLUDE_NAMESPACE"), ",")
+	allNamespace := []string{v1.NamespaceAll}
+
+	switch len(inNamespace) {
+	// include all namespaces
+	case 0:
+		switch len(exNamespace) {
+		// exclude nothing
+		case 0:
+			app.namespaces = allNamespace
+		// exclude some
+		default:
+			app.namespaces = difference(allNamespace, exNamespace)
+		}
+	// include only some namespaces
+	default:
+		switch len(exNamespace) {
+		// include some, exclude nothing
+		case 0:
+			app.namespaces = inNamespace
+		// include some, exclude some from it
+		default:
+			app.namespaces = difference(inNamespace, exNamespace)
+		}
 	}
 
 	stopSignal, err := app.Run()
@@ -107,4 +127,18 @@ func createKubernetesClient(configFile string) (client *kubernetes.Clientset, er
 		return
 	}
 	return kubernetes.NewForConfig(config)
+}
+
+func difference(allNamespace, exNamespace []string) []string {
+	mapdiff := make(map[string]struct{}, len(exNamespace))
+	for _, ns := range exNamespace {
+		mapdiff[ns] = struct{}{}
+	}
+	var diff []string
+	for _, ns := range allNamespace {
+		if _, found := mapdiff[ns]; !found {
+			diff = append(diff, ns)
+		}
+	}
+	return diff
 }

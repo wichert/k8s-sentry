@@ -27,7 +27,8 @@ Configuration is done completely via environment variables.
 | -- | -- |
 | `SENTRY_DSN` | **Required** DSN for a Sentry project. |
 | `SENTRY_ENVIRONMENT` | Environment for Sentry issues. If not set the namespace is used as environment. |
-| `NAMESPACE` | Comma separated set of namespaces to minitor. If not set all namespaces are monitored (as far as permissions allow) |
+| `NAMESPACE` | Comma separated set of namespaces to monitor. If not set all namespaces are monitored (as far as permissions allow) |
+| `EXCLUDE_NAMESPACE` | Comma separated set of namespaces to not monitor. If `NAMESPACE` is also set, namespaces are excluded from that else from all namespaces|
 
 ## Issue grouping
 
