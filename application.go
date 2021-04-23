@@ -25,7 +25,6 @@ import (
 	"github.com/getsentry/sentry-go"
 	lru "github.com/hashicorp/golang-lru"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -35,6 +34,7 @@ import (
 type terminationKey struct {
 	podUID        types.UID
 	containerName string
+	restartCount  int32
 }
 
 type application struct {
@@ -114,26 +114,27 @@ func (app *application) handlePodUpdate(oldObj, newObj interface{}) {
 	// ignore that situation (for now).
 	allContainers := append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...)
 	for _, status := range allContainers {
-		if status.LastTerminationState.Terminated != nil && status.LastTerminationState.Terminated.ExitCode != 0 && app.isNewTermination(pod, &status) {
+		if app.isNewTermination(pod, &status) && status.State.Terminated.ExitCode != 0 {
 			// Note that we only care about terminations in the last half seconds. This prevents
 			// us from treating updates for other reasons after a container terminated as another
 			// occurance of the termination.
 			sentryEvent = sentry.NewEvent()
-			sentryEvent.Message = status.LastTerminationState.Terminated.Message
+			sentryEvent.Message = status.State.Terminated.Message
 			sentryEvent.ServerName = pod.Spec.NodeName
 			if sentryEvent.Message == "" {
-				if status.LastTerminationState.Terminated.Reason == "Error" {
-					sentryEvent.Message = fmt.Sprintf("Error %s exited with code %d", status.Name, status.LastTerminationState.Terminated.ExitCode)
+				if status.State.Terminated.Reason == "Error" {
+					sentryEvent.Message = fmt.Sprintf("Error %s exited with code %d", status.Name, status.State.Terminated.ExitCode)
 				} else {
 					// OOMKilled does not leave a message :(
-					sentryEvent.Message = status.LastTerminationState.Terminated.Reason
+					sentryEvent.Message = status.State.Terminated.Reason
 				}
 			}
 
 			sentryEvent.Release = status.Image
-			sentryEvent.Tags["reason"] = status.LastTerminationState.Terminated.Reason
-			sentryEvent.Extra["exit-code"] = strconv.FormatInt(int64(status.LastTerminationState.Terminated.ExitCode), 10)
+			sentryEvent.Tags["reason"] = status.State.Terminated.Reason
+			sentryEvent.Extra["exit-code"] = strconv.FormatInt(int64(status.State.Terminated.ExitCode), 10)
 			sentryEvent.Extra["restartCount"] = status.RestartCount
+			sentryEvent.Extra["restartPolicy"] = pod.Spec.RestartPolicy
 			sentryEvent.Extra["container"] = status.Name
 			sentryEvent.Extra["pod"] = pod.Name
 
@@ -175,30 +176,22 @@ func (app *application) handlePodUpdate(oldObj, newObj interface{}) {
 }
 
 func (app *application) isNewTermination(pod *v1.Pod, status *v1.ContainerStatus) bool {
-	finishedAt := status.LastTerminationState.Terminated.FinishedAt
-	age := metav1.Now().Sub(finishedAt.Time)
+
+	if status.State.Terminated == nil {
+		return false
+	}
+
+	finishedAt := status.State.Terminated.FinishedAt
 
 	key := terminationKey{
 		podUID:        pod.UID,
 		containerName: status.Name,
+		restartCount:  status.RestartCount,
 	}
-	cachedTime, seen := app.terminationsSeen.Get(key)
+	_, seen := app.terminationsSeen.Get(key)
 	app.terminationsSeen.Add(key, finishedAt)
 
-	// We skip old records. These happen if a container terminated before, and then the
-	// pod later gets updated for other reasons with the termination record still in place.
-	if age.Microseconds() > 5000 {
-		return false
-	}
-
-	prevTime, ok := cachedTime.(metav1.Time)
-	if !ok {
-		// If this happened we have bad data in the cache and we are best off to
-		// not do anything anymore
-		return false
-	}
-
-	return !seen || finishedAt.After(prevTime.Time)
+	return !seen
 }
 
 func (app application) handleEventAdd(obj interface{}) {
