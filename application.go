@@ -20,6 +20,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -40,6 +41,7 @@ type terminationKey struct {
 type application struct {
 	clientset          *kubernetes.Clientset
 	defaultEnvironment string
+	skipEventLevels    []string
 	terminationsSeen   *lru.Cache
 	namespaces         []string
 }
@@ -201,7 +203,7 @@ func (app application) handleEventAdd(obj interface{}) {
 		return
 	}
 
-	if skipEvent(evt) {
+	if skipEvent(evt, app.skipEventLevels) {
 		return
 	}
 
@@ -253,8 +255,17 @@ func (app application) handleEventAdd(obj interface{}) {
 	sentry.CaptureEvent(sentryEvent)
 }
 
-func skipEvent(evt *v1.Event) bool {
-	return evt.Type == v1.EventTypeNormal
+func skipEvent(evt *v1.Event, skipLevels []string) bool {
+
+	evtType := strings.ToLower(evt.Type)
+
+	for _, level := range skipLevels {
+		if level == evtType {
+			return true
+		}
+	}
+
+	return false
 }
 
 func getSentryLevel(evt *v1.Event) sentry.Level {
