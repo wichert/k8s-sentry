@@ -62,9 +62,19 @@ func main() {
 		log.Fatalf("Error creating kubernetes client: %v", err)
 	}
 
+	skipEnv, isSet := os.LookupEnv("SKIP_EVENT_LEVELS")
+	var skipLevels []string
+
+	if isSet {
+		skipLevels = strings.Split(strings.ToLower(skipEnv), ",")
+	} else {
+		skipLevels = []string{strings.ToLower(v1.EventTypeNormal)}
+	}
+
 	app := application{
 		clientset:          clientset,
 		defaultEnvironment: os.Getenv("SENTRY_ENVIRONMENT"),
+		skipEventLevels:    skipLevels,
 	}
 
 	namespace := os.Getenv("NAMESPACE")

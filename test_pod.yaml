@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test
+  namespace: default
+spec:
+  containers:
+    - command:
+        - "/bin/sh"
+      args:
+        - "-c"
+        - "sleep 3; exit 123"
+      image: alpine
+      imagePullPolicy: IfNotPresent
+      name: test
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  hostNetwork: true
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 1
