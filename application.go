@@ -16,9 +16,12 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"fmt"
+	"golang.org/x/sync/errgroup"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/watch"
 	"log"
 	"os"
@@ -58,18 +61,22 @@ func (app *application) Run() (chan struct{}, error) {
 
 	stop := make(chan struct{})
 
+	errGroup, ctx := errgroup.WithContext(context.Background())
+
 	app.nsSkipEventLevels = make(map[string][]string)
+	errGroup.Go(func() error {
+		return app.monitorNamespaces(stop, ctx, func() {
+			for _, namespace := range app.namespaces {
+				go app.monitorEvents(namespace, stop)
+				go app.monitorPods(namespace, stop)
+			}
+		})
+	})
 
-	go app.monitorNamespaces(stop)
-
-	for _, namespace := range app.namespaces {
-		go app.monitorEvents(namespace, stop)
-		go app.monitorPods(namespace, stop)
-	}
-	return stop, nil
+	return stop, errGroup.Wait()
 }
 
-func (app application) monitorNamespaces(stop chan struct{}) {
+func (app application) monitorNamespaces(stop chan struct{}, ctx context.Context, readyFn func()) error {
 
 	client := app.clientset.CoreV1().RESTClient()
 
@@ -106,7 +113,20 @@ func (app application) monitorNamespaces(stop chan struct{}) {
 		},
 	)
 
-	controller.Run(stop)
+	go controller.Run(stop)
+
+	err := wait.PollImmediate(250*time.Millisecond, time.Duration(20)*time.Second, func() (bool, error) {
+		return controller.HasSynced(), nil
+	})
+
+	if err != nil {
+		log.Printf("Timeout while initializing namespaces, unable to proceed.")
+		return ctx.Err()
+
+	} else {
+		readyFn()
+		return nil
+	}
 }
 
 func (app application) monitorPods(namespace string, stop chan struct{}) {
