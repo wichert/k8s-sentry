@@ -62,13 +62,20 @@ func main() {
 		log.Fatalf("Error creating kubernetes client: %v", err)
 	}
 
-	skipEnv, _ := os.LookupEnv("SKIP_EVENT_LEVELS")
-	var skipLevels = parseSkipLevels(&skipEnv, v1.EventTypeNormal)
+	skipLevelEnv, _ := os.LookupEnv(SkipEventLevelsEnv)
+	skipReasonEnv, _ := os.LookupEnv(SkipEventReasonsEnv)
+	skipLevels := parseSkipConfig(SKIP_BY_LEVEL, &skipLevelEnv, v1.EventTypeNormal)
+	skipReasons := parseSkipConfig(SKIP_BY_REASON, &skipReasonEnv)
+
+	skipConfig := make(map[string]struct{})
+	for _, config := range append(skipReasons, skipLevels...) {
+		skipConfig[config] = struct{}{}
+	}
 
 	app := application{
-		clientset:             clientset,
-		defaultEnvironment:    os.Getenv("SENTRY_ENVIRONMENT"),
-		globalSkipEventLevels: skipLevels,
+		clientset:          clientset,
+		defaultEnvironment: os.Getenv("SENTRY_ENVIRONMENT"),
+		globalSkipConfig:   skipConfig,
 	}
 
 	namespace := os.Getenv("NAMESPACE")
