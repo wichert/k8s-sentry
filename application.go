@@ -17,10 +17,12 @@ package main
 
 import (
 	"fmt"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
 	"log"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -39,11 +41,12 @@ type terminationKey struct {
 }
 
 type application struct {
-	clientset          *kubernetes.Clientset
-	defaultEnvironment string
-	skipEventLevels    []string
-	terminationsSeen   *lru.Cache
-	namespaces         []string
+	clientset             *kubernetes.Clientset
+	defaultEnvironment    string
+	globalSkipEventLevels []string
+	nsSkipEventLevels     map[string][]string
+	terminationsSeen      *lru.Cache
+	namespaces            []string
 }
 
 func (app *application) Run() (chan struct{}, error) {
@@ -54,11 +57,56 @@ func (app *application) Run() (chan struct{}, error) {
 	app.terminationsSeen = terminationsSeen
 
 	stop := make(chan struct{})
+
+	app.nsSkipEventLevels = make(map[string][]string)
+
+	go app.monitorNamespaces(stop)
+
 	for _, namespace := range app.namespaces {
 		go app.monitorEvents(namespace, stop)
 		go app.monitorPods(namespace, stop)
 	}
 	return stop, nil
+}
+
+func (app application) monitorNamespaces(stop chan struct{}) {
+
+	client := app.clientset.CoreV1().RESTClient()
+
+	optionsModifier := func(options *metav1.ListOptions) {
+		options.FieldSelector = fields.Everything().String()
+	}
+
+	listFunc := func(options metav1.ListOptions) (runtime.Object, error) {
+		optionsModifier(&options)
+		return client.Get().
+			Resource("namespaces").
+			VersionedParams(&options, metav1.ParameterCodec).
+			Do().
+			Get()
+	}
+	watchFunc := func(options metav1.ListOptions) (watch.Interface, error) {
+		options.Watch = true
+		optionsModifier(&options)
+		return client.Get().
+			Resource("namespaces").
+			VersionedParams(&options, metav1.ParameterCodec).
+			Watch()
+	}
+	watchList := &cache.ListWatch{ListFunc: listFunc, WatchFunc: watchFunc}
+
+	_, controller := cache.NewInformer(
+		watchList,
+		&v1.Namespace{},
+		time.Second*60,
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    app.handleNsAdd,
+			UpdateFunc: app.handleNsUpdate,
+			DeleteFunc: app.handleNsDelete,
+		},
+	)
+
+	controller.Run(stop)
 }
 
 func (app application) monitorPods(namespace string, stop chan struct{}) {
@@ -82,6 +130,7 @@ func (app application) monitorPods(namespace string, stop chan struct{}) {
 }
 
 func (app application) monitorEvents(namespace string, stop chan struct{}) {
+
 	watchList := cache.NewListWatchFromClient(
 		app.clientset.CoreV1().RESTClient(),
 		"events",
@@ -98,6 +147,28 @@ func (app application) monitorEvents(namespace string, stop chan struct{}) {
 	)
 
 	controller.Run(stop)
+}
+
+func (app *application) handleNsAdd(newNS interface{}) {
+	app.handleNsUpdate(nil, newNS)
+}
+
+func (app *application) handleNsUpdate(_, newNS interface{}) {
+
+	ns, _ := newNS.(*v1.Namespace)
+
+	value, _ := ns.ObjectMeta.Annotations[SkipLevelKey]
+
+	skipLevels := parseSkipLevels(&value, app.globalSkipEventLevels...)
+	app.nsSkipEventLevels[ns.Name] = skipLevels
+
+}
+
+func (app *application) handleNsDelete(goneNS interface{}) {
+
+	ns, _ := goneNS.(*v1.Namespace)
+
+	delete(app.nsSkipEventLevels, ns.Name)
 }
 
 func (app *application) handlePodUpdate(oldObj, newObj interface{}) {
@@ -203,7 +274,7 @@ func (app application) handleEventAdd(obj interface{}) {
 		return
 	}
 
-	if skipEvent(evt, app.skipEventLevels) {
+	if skipEvent(evt, app.nsSkipEventLevels, app.globalSkipEventLevels) {
 		return
 	}
 
@@ -253,19 +324,6 @@ func (app application) handleEventAdd(obj interface{}) {
 
 	log.Printf("%s %s\n", evt.Type, sentryEvent.Message)
 	sentry.CaptureEvent(sentryEvent)
-}
-
-func skipEvent(evt *v1.Event, skipLevels []string) bool {
-
-	evtType := strings.ToLower(evt.Type)
-
-	for _, level := range skipLevels {
-		if level == evtType {
-			return true
-		}
-	}
-
-	return false
 }
 
 func getSentryLevel(evt *v1.Event) sentry.Level {
