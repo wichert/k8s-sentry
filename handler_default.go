@@ -18,6 +18,7 @@ package main
 import (
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"strings"
 )
 
 // DefaultEventHandler is the default handler for events.
@@ -31,7 +32,7 @@ func (h DefaultEventHandler) Fingerprint() []string {
 		h.Event.InvolvedObject.APIVersion,
 		h.Event.InvolvedObject.Kind,
 		h.Event.InvolvedObject.Namespace,
-		h.Event.InvolvedObject.Name,
+		mangleName(h.Event.InvolvedObject.Name),
 		h.Event.InvolvedObject.FieldPath,
 	}
 }
@@ -58,9 +59,24 @@ func fingerprintFromMeta(resource *metav1.ObjectMeta) []string {
 		}
 	}
 
+	name := resource.GenerateName
+	if name == "" {
+		name = mangleName(resource.Name)
+	}
+
 	// Otherwise we group based onthe object itself
 	return []string{
 		resource.Namespace,
-		string(resource.UID),
+		name,
 	}
+}
+
+func mangleName(original string) string {
+	splits := strings.Split(original, "-")
+
+	if len(splits) < 3 {
+		return splits[0]
+	}
+
+	return strings.Join(splits[0:len(splits)-2], "-")
 }

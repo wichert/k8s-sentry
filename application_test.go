@@ -12,22 +12,44 @@ func TestSkipEvent(t *testing.T) {
 	t.Parallel()
 
 	evt := &v1.Event{Type: v1.EventTypeNormal}
-	if !skipEvent(evt) {
-		t.Error("Normal events must be skipped")
+
+	skipLevels := map[string]map[string]struct{}{
+		"default": {
+			skipConfigLookupKey(SKIP_BY_REASON, "Pod", "created"):    {},
+			skipConfigLookupKey(SKIP_BY_REASON, "", "puLLeD"):        {},
+			skipConfigLookupKey(SKIP_BY_LEVEL, "Service", "warning"): {},
+			skipConfigLookupKey(SKIP_BY_LEVEL, "", "info"):           {},
+		},
 	}
 
+	evt.Type = v1.EventTypeNormal
+	evt.ObjectMeta.Namespace = "default"
+	evt.InvolvedObject.Kind = "Pod"
+	evt.Reason = "created"
+	if !skipEvent(evt, skipLevels) {
+		t.Error("pod:created should be skipped by reason")
+	}
+
+	evt.Reason = "pulled"
+	if !skipEvent(evt, skipLevels) {
+		t.Error("[any kind]:pulled should be skipped by reason")
+	}
+
+	evt.InvolvedObject.Kind = "serVICE"
 	evt.Type = v1.EventTypeWarning
-	if skipEvent(evt) {
-		t.Error("Warnings events must not be skipped")
+	if !skipEvent(evt, skipLevels) {
+		t.Error("service:warning should be skipped by level")
 	}
 
-	evt.Type = "Error"
-	if skipEvent(evt) {
-		t.Error("Error events must not be skipped")
+	evt.InvolvedObject.Kind = "ConfigMap"
+	evt.Type = v1.EventTypeNormal
+	if !skipEvent(evt, skipLevels) {
+		t.Error("[any kind]:info should be skipped by level")
 	}
 
 	evt.Type = "Unknown"
-	if skipEvent(evt) {
+	evt.Reason = "killed"
+	if skipEvent(evt, skipLevels) {
 		t.Error("Unknown event types must not be skipped")
 	}
 }

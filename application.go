@@ -16,16 +16,22 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"fmt"
+	"golang.org/x/sync/errgroup"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/watch"
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/getsentry/sentry-go"
 	lru "github.com/hashicorp/golang-lru"
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
@@ -35,14 +41,19 @@ import (
 type terminationKey struct {
 	podUID        types.UID
 	containerName string
+	restartCount  int32
 }
 
 type application struct {
-	clientset          *kubernetes.Clientset
-	defaultEnvironment string
-	terminationsSeen   *lru.Cache
-	namespaces         []string
+	clientset           *kubernetes.Clientset
+	defaultEnvironment  string
+	globalSkipConfig    map[string]struct{}
+	nsSkipEventCriteria map[string]map[string]struct{}
+	terminationsSeen    *lru.Cache
+	namespaces          []string
 }
+
+const AnyNS = "__GLOBAL__"
 
 func (app *application) Run() (chan struct{}, error) {
 	terminationsSeen, err := lru.New(500)
@@ -52,11 +63,75 @@ func (app *application) Run() (chan struct{}, error) {
 	app.terminationsSeen = terminationsSeen
 
 	stop := make(chan struct{})
-	for _, namespace := range app.namespaces {
-		go app.monitorEvents(namespace, stop)
-		go app.monitorPods(namespace, stop)
+
+	errGroup, ctx := errgroup.WithContext(context.Background())
+
+	app.nsSkipEventCriteria = make(map[string]map[string]struct{})
+	app.nsSkipEventCriteria[AnyNS] = app.globalSkipConfig
+
+	errGroup.Go(func() error {
+		return app.monitorNamespaces(stop, ctx, func() {
+			for _, namespace := range app.namespaces {
+				go app.monitorEvents(namespace, stop)
+				go app.monitorPods(namespace, stop)
+			}
+		})
+	})
+
+	return stop, errGroup.Wait()
+}
+
+func (app application) monitorNamespaces(stop chan struct{}, ctx context.Context, readyFn func()) error {
+
+	client := app.clientset.CoreV1().RESTClient()
+
+	optionsModifier := func(options *metav1.ListOptions) {
+		options.FieldSelector = fields.Everything().String()
 	}
-	return stop, nil
+
+	listFunc := func(options metav1.ListOptions) (runtime.Object, error) {
+		optionsModifier(&options)
+		return client.Get().
+			Resource("namespaces").
+			VersionedParams(&options, metav1.ParameterCodec).
+			Do().
+			Get()
+	}
+	watchFunc := func(options metav1.ListOptions) (watch.Interface, error) {
+		options.Watch = true
+		optionsModifier(&options)
+		return client.Get().
+			Resource("namespaces").
+			VersionedParams(&options, metav1.ParameterCodec).
+			Watch()
+	}
+	watchList := &cache.ListWatch{ListFunc: listFunc, WatchFunc: watchFunc}
+
+	_, controller := cache.NewInformer(
+		watchList,
+		&v1.Namespace{},
+		time.Second*120,
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    app.handleNsAdd,
+			UpdateFunc: app.handleNsUpdate,
+			DeleteFunc: app.handleNsDelete,
+		},
+	)
+
+	go controller.Run(stop)
+
+	err := wait.PollImmediate(250*time.Millisecond, time.Duration(20)*time.Second, func() (bool, error) {
+		return controller.HasSynced(), nil
+	})
+
+	if err != nil {
+		log.Printf("Timeout while initializing namespaces, unable to proceed.")
+		return ctx.Err()
+
+	} else {
+		readyFn()
+		return nil
+	}
 }
 
 func (app application) monitorPods(namespace string, stop chan struct{}) {
@@ -80,6 +155,7 @@ func (app application) monitorPods(namespace string, stop chan struct{}) {
 }
 
 func (app application) monitorEvents(namespace string, stop chan struct{}) {
+
 	watchList := cache.NewListWatchFromClient(
 		app.clientset.CoreV1().RESTClient(),
 		"events",
@@ -98,6 +174,39 @@ func (app application) monitorEvents(namespace string, stop chan struct{}) {
 	controller.Run(stop)
 }
 
+func (app *application) handleNsAdd(newNS interface{}) {
+	app.handleNsUpdate(nil, newNS)
+}
+
+func (app *application) handleNsUpdate(_, newNS interface{}) {
+
+	ns, _ := newNS.(*v1.Namespace)
+
+	skipLevelsValue, _ := ns.ObjectMeta.Annotations[SkipLevelKey]
+	skipReasonsValue, _ := ns.ObjectMeta.Annotations[SkipReasonKey]
+
+	nsSkipConfigs := append(parseSkipConfig(SKIP_BY_LEVEL, &skipLevelsValue), parseSkipConfig(SKIP_BY_REASON, &skipReasonsValue)...)
+	lookupMap := make(map[string]struct{})
+
+	for _, skipConfig := range nsSkipConfigs {
+		lookupMap[skipConfig] = struct{}{}
+	}
+
+	if len(lookupMap) == 0 {
+		delete(app.nsSkipEventCriteria, ns.Name)
+	} else {
+		app.nsSkipEventCriteria[ns.Name] = lookupMap
+	}
+
+}
+
+func (app *application) handleNsDelete(goneNS interface{}) {
+
+	ns, _ := goneNS.(*v1.Namespace)
+
+	delete(app.nsSkipEventCriteria, ns.Name)
+}
+
 func (app *application) handlePodUpdate(oldObj, newObj interface{}) {
 	pod, ok := newObj.(*v1.Pod)
 	if !ok {
@@ -105,101 +214,99 @@ func (app *application) handlePodUpdate(oldObj, newObj interface{}) {
 		return
 	}
 
-	var sentryEvent *sentry.Event
+	ignore, ok := pod.Annotations[SkipPodModificationEvent]
 
-	if pod.Status.Phase == v1.PodFailed {
-		// All containers in the pod have terminated, and at least one container has
-		// terminated in a failure (exited with a non-zero exit code or was stopped by the system).
-		sentryEvent = sentry.NewEvent()
-		sentryEvent.Message = pod.Status.Message
-		sentryEvent.ServerName = pod.Spec.NodeName
-		sentryEvent.Tags["reason"] = pod.Status.Reason
-	} else {
-		// The Pod is still running. Check if one of its containers terminated with a non-zero exit code.
-		// If so report that as an error.
-		// Note that this will fail if multiple containers in the pod are terminating at the same time.
-		// Since that should be rare, and hopefully someone will investigate on any error anyway we
-		// ignore that situation (for now).
-		allContainers := append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...)
-		for _, status := range allContainers {
-			if status.LastTerminationState.Terminated != nil && status.LastTerminationState.Terminated.ExitCode != 0 && app.isNewTermination(pod, &status) {
-				// Note that we only care about terminations in the last half seconds. This prevents
-				// us from treating updates for other reasons after a container terminated as another
-				// occurance of the termination.
-				sentryEvent = sentry.NewEvent()
-				sentryEvent.Message = status.LastTerminationState.Terminated.Message
-				sentryEvent.ServerName = pod.Spec.NodeName
-				if sentryEvent.Message == "" {
-					// OOMKilled does not leave a message :(
-					sentryEvent.Message = status.LastTerminationState.Terminated.Reason
-				}
-				sentryEvent.Release = status.Image
-				sentryEvent.Tags["reason"] = status.LastTerminationState.Terminated.Reason
-				sentryEvent.Extra["exit-code"] = strconv.FormatInt(int64(status.LastTerminationState.Terminated.ExitCode), 10)
-				sentryEvent.Extra["restartCount"] = status.RestartCount
-				break
-			}
-		}
+	if ok && strings.ToLower(ignore) == "true" {
+		return
 	}
 
-	// There are many reasons a Pod can be updated. We are only interested in containers
-	// that terminated uncleanly
+	var sentryEvent *sentry.Event
 
-	if sentryEvent != nil {
-		sentryEvent.Logger = "kubernetes"
-		sentryEvent.Level = sentry.LevelError
-		if app.defaultEnvironment != "" {
-			sentryEvent.Environment = app.defaultEnvironment
-		} else {
-			sentryEvent.Environment = pod.Namespace
+	// The Pod is still running. Check if one of its containers terminated with a non-zero exit code.
+	// If so report that as an error.
+	// Note that this will fail if multiple containers in the pod are terminating at the same time.
+	// Since that should be rare, and hopefully someone will investigate on any error anyway we
+	// ignore that situation (for now).
+	allContainers := append(pod.Status.InitContainerStatuses, pod.Status.ContainerStatuses...)
+	for _, status := range allContainers {
+		if app.isNewTermination(pod, &status) && status.State.Terminated.ExitCode != 0 {
+			// Note that we only care about terminations in the last half seconds. This prevents
+			// us from treating updates for other reasons after a container terminated as another
+			// occurance of the termination.
+			sentryEvent = sentry.NewEvent()
+			sentryEvent.Message = status.State.Terminated.Message
+			sentryEvent.ServerName = pod.Spec.NodeName
+			if sentryEvent.Message == "" {
+				if status.State.Terminated.Reason == "Error" {
+					sentryEvent.Message = fmt.Sprintf("Error %s exited with code %d", status.Name, status.State.Terminated.ExitCode)
+				} else {
+					// OOMKilled does not leave a message :(
+					sentryEvent.Message = status.State.Terminated.Reason
+				}
+			}
+
+			sentryEvent.Release = status.Image
+			sentryEvent.Tags["reason"] = status.State.Terminated.Reason
+			sentryEvent.Extra["exit-code"] = strconv.FormatInt(int64(status.State.Terminated.ExitCode), 10)
+			sentryEvent.Extra["restartCount"] = status.RestartCount
+			sentryEvent.Extra["restartPolicy"] = pod.Spec.RestartPolicy
+			sentryEvent.Extra["container"] = status.Name
+			sentryEvent.Extra["pod"] = pod.Name
+
+			sentryEvent.Extra["pod-phase"] = pod.Status.Phase
+			if pod.Status.Message != "" {
+				sentryEvent.Extra["pod-status-message"] = pod.Status.Message
+			}
+			if pod.Status.Reason != "" {
+				sentryEvent.Extra["pod-status-reason"] = pod.Status.Reason
+			}
+
+			sentryEvent.Logger = "kubernetes"
+			sentryEvent.Level = sentry.LevelError
+			if app.defaultEnvironment != "" {
+				sentryEvent.Environment = app.defaultEnvironment
+			} else {
+				sentryEvent.Environment = pod.Namespace
+			}
+
+			sentryEvent.Fingerprint = append(
+				[]string{
+					sentryEvent.Tags["reason"],
+				},
+				fingerprintFromMeta(&pod.ObjectMeta)...)
+
+			sentryEvent.Tags["namespace"] = pod.Namespace
+			if pod.ClusterName != "" {
+				sentryEvent.Tags["cluster"] = pod.ClusterName
+			}
+			sentryEvent.Tags["kind"] = pod.Kind
+			for k, v := range pod.ObjectMeta.Labels {
+				sentryEvent.Tags[k] = v
+			}
+			sentryEvent.Message = fmt.Sprintf("Pod/%s: %s", pod.Name, sentryEvent.Message)
+
+			sentry.CaptureEvent(sentryEvent)
 		}
-
-		sentryEvent.Fingerprint = append(
-			[]string{
-				sentryEvent.Tags["reason"],
-				sentryEvent.Message,
-			},
-			fingerprintFromMeta(&pod.ObjectMeta)...)
-
-		sentryEvent.Tags["namespace"] = pod.Namespace
-		if pod.ClusterName != "" {
-			sentryEvent.Tags["cluster"] = pod.ClusterName
-		}
-		sentryEvent.Tags["kind"] = pod.Kind
-		for k, v := range pod.ObjectMeta.Labels {
-			sentryEvent.Tags[k] = v
-		}
-		sentryEvent.Message = fmt.Sprintf("Pod/%s: %s", pod.Name, sentryEvent.Message)
-
-		sentry.CaptureEvent(sentryEvent)
 	}
 }
 
 func (app *application) isNewTermination(pod *v1.Pod, status *v1.ContainerStatus) bool {
-	finishedAt := status.LastTerminationState.Terminated.FinishedAt
-	age := metav1.Now().Sub(finishedAt.Time)
+
+	if status.State.Terminated == nil {
+		return false
+	}
+
+	finishedAt := status.State.Terminated.FinishedAt
 
 	key := terminationKey{
 		podUID:        pod.UID,
 		containerName: status.Name,
+		restartCount:  status.RestartCount,
 	}
-	cachedTime, seen := app.terminationsSeen.Get(key)
+	_, seen := app.terminationsSeen.Get(key)
 	app.terminationsSeen.Add(key, finishedAt)
 
-	// We skip old records. These happen if a container terminated before, and then the
-	// pod later gets updated for other reasons with the termination record still in place.
-	if age.Microseconds() > 5000 {
-		return false
-	}
-
-	prevTime, ok := cachedTime.(metav1.Time)
-	if !ok {
-		// If this happened we have bad data in the cache and we are best off to
-		// not do anything anymore
-		return false
-	}
-
-	return !seen || finishedAt.After(prevTime.Time)
+	return !seen
 }
 
 func (app application) handleEventAdd(obj interface{}) {
@@ -209,7 +316,7 @@ func (app application) handleEventAdd(obj interface{}) {
 		return
 	}
 
-	if skipEvent(evt) {
+	if skipEvent(evt, app.nsSkipEventCriteria) {
 		return
 	}
 
@@ -220,15 +327,19 @@ func (app application) handleEventAdd(obj interface{}) {
 		sentryEvent.Environment = evt.InvolvedObject.Namespace
 	}
 
+	msg := evt.Message
+	if msg == "" {
+		msg = evt.Reason
+	}
+
 	sentryEvent.Logger = "kubernetes"
-	sentryEvent.Message = fmt.Sprintf("%s/%s: %s", evt.InvolvedObject.Kind, evt.InvolvedObject.Name, evt.Message)
+	sentryEvent.Message = fmt.Sprintf("%s/%s: %s", evt.InvolvedObject.Kind, evt.InvolvedObject.Name, msg)
 	sentryEvent.Level = getSentryLevel(evt)
 	sentryEvent.Timestamp = evt.ObjectMeta.CreationTimestamp.Time
 	sentryEvent.Fingerprint = []string{
 		evt.Source.Component,
 		evt.Type,
 		evt.Reason,
-		evt.Message,
 	}
 
 	sentryEvent.Tags["namespace"] = evt.InvolvedObject.Namespace
@@ -239,6 +350,9 @@ func (app application) handleEventAdd(obj interface{}) {
 	sentryEvent.Tags["reason"] = evt.Reason
 	sentryEvent.Tags["kind"] = evt.InvolvedObject.Kind
 	sentryEvent.Tags["type"] = evt.Type
+	if evt.ReportingController != "" {
+		sentryEvent.Tags["controller"] = evt.ReportingController
+	}
 	if evt.Action != "" {
 		sentryEvent.Extra["action"] = evt.Action
 	}
@@ -252,10 +366,6 @@ func (app application) handleEventAdd(obj interface{}) {
 
 	log.Printf("%s %s\n", evt.Type, sentryEvent.Message)
 	sentry.CaptureEvent(sentryEvent)
-}
-
-func skipEvent(evt *v1.Event) bool {
-	return evt.Type == v1.EventTypeNormal
 }
 
 func getSentryLevel(evt *v1.Event) sentry.Level {
