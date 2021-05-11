@@ -26,6 +26,7 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/getsentry/sentry-go"
@@ -44,13 +45,15 @@ type terminationKey struct {
 }
 
 type application struct {
-	clientset             *kubernetes.Clientset
-	defaultEnvironment    string
-	globalSkipEventLevels []string
-	nsSkipEventLevels     map[string][]string
-	terminationsSeen      *lru.Cache
-	namespaces            []string
+	clientset           *kubernetes.Clientset
+	defaultEnvironment  string
+	globalSkipConfig    map[string]struct{}
+	nsSkipEventCriteria map[string]map[string]struct{}
+	terminationsSeen    *lru.Cache
+	namespaces          []string
 }
+
+const AnyNS = "__GLOBAL__"
 
 func (app *application) Run() (chan struct{}, error) {
 	terminationsSeen, err := lru.New(500)
@@ -63,7 +66,9 @@ func (app *application) Run() (chan struct{}, error) {
 
 	errGroup, ctx := errgroup.WithContext(context.Background())
 
-	app.nsSkipEventLevels = make(map[string][]string)
+	app.nsSkipEventCriteria = make(map[string]map[string]struct{})
+	app.nsSkipEventCriteria[AnyNS] = app.globalSkipConfig
+
 	errGroup.Go(func() error {
 		return app.monitorNamespaces(stop, ctx, func() {
 			for _, namespace := range app.namespaces {
@@ -105,7 +110,7 @@ func (app application) monitorNamespaces(stop chan struct{}, ctx context.Context
 	_, controller := cache.NewInformer(
 		watchList,
 		&v1.Namespace{},
-		time.Second*60,
+		time.Second*120,
 		cache.ResourceEventHandlerFuncs{
 			AddFunc:    app.handleNsAdd,
 			UpdateFunc: app.handleNsUpdate,
@@ -177,10 +182,21 @@ func (app *application) handleNsUpdate(_, newNS interface{}) {
 
 	ns, _ := newNS.(*v1.Namespace)
 
-	value, _ := ns.ObjectMeta.Annotations[SkipLevelKey]
+	skipLevelsValue, _ := ns.ObjectMeta.Annotations[SkipLevelKey]
+	skipReasonsValue, _ := ns.ObjectMeta.Annotations[SkipReasonKey]
 
-	skipLevels := parseSkipLevels(&value, app.globalSkipEventLevels...)
-	app.nsSkipEventLevels[ns.Name] = skipLevels
+	nsSkipConfigs := append(parseSkipConfig(SKIP_BY_LEVEL, &skipLevelsValue), parseSkipConfig(SKIP_BY_REASON, &skipReasonsValue)...)
+	lookupMap := make(map[string]struct{})
+
+	for _, skipConfig := range nsSkipConfigs {
+		lookupMap[skipConfig] = struct{}{}
+	}
+
+	if len(lookupMap) == 0 {
+		delete(app.nsSkipEventCriteria, ns.Name)
+	} else {
+		app.nsSkipEventCriteria[ns.Name] = lookupMap
+	}
 
 }
 
@@ -188,13 +204,19 @@ func (app *application) handleNsDelete(goneNS interface{}) {
 
 	ns, _ := goneNS.(*v1.Namespace)
 
-	delete(app.nsSkipEventLevels, ns.Name)
+	delete(app.nsSkipEventCriteria, ns.Name)
 }
 
 func (app *application) handlePodUpdate(oldObj, newObj interface{}) {
 	pod, ok := newObj.(*v1.Pod)
 	if !ok {
 		sentry.CaptureMessage("Unexpected pod type")
+		return
+	}
+
+	ignore, ok := pod.Annotations[SkipPodModificationEvent]
+
+	if ok && strings.ToLower(ignore) == "true" {
 		return
 	}
 
@@ -294,7 +316,7 @@ func (app application) handleEventAdd(obj interface{}) {
 		return
 	}
 
-	if skipEvent(evt, app.nsSkipEventLevels, app.globalSkipEventLevels) {
+	if skipEvent(evt, app.nsSkipEventCriteria) {
 		return
 	}
 
