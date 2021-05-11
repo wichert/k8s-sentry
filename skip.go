@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-const SkipLevelKey string = "secunet.sentry/skip-event-levels"
-const SkipReasonKey string = "secunet.sentry/skip-event-reasons"
-const SkipPodModificationEvent string = "secunet.sentry/ignore-pod-updates"
+const SkipLevelKey string = "sentry/skip-event-levels"
+const SkipReasonKey string = "sentry/skip-event-reasons"
+const SkipPodModificationEvent string = "sentry/ignore-pod-updates"
 
 const SkipEventReasonsEnv = "SKIP_EVENT_REASONS"
 const SkipEventLevelsEnv = "SKIP_EVENT_LEVELS"

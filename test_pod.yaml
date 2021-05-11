@@ -4,7 +4,7 @@ metadata:
   name: test
   namespace: default
   annotations:
-    secunet.sentry/ignore-pod-updates: "true"
+    sentry/ignore-pod-updates: "true"
 spec:
   containers:
     - command:
